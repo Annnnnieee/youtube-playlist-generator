@@ -3,6 +3,17 @@ var readline = require('readline');
 var google = require('googleapis');
 var OAuth2 = google.auth.OAuth2;
 
+var Song = require('./song');
+
+var mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/album');
+
+const db = mongoose.connection;
+db.on('error', console.error.bind(console, 'connection error:'));
+db.once('open', function() {
+  console.log("connected");
+});
+
 // If modifying these scopes, delete your previously saved credentials
 // at ~/.credentials/youtube-nodejs-quickstart.json
 //var SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
@@ -24,7 +35,7 @@ fs.readFile('client_secret.json', function processClientSecrets(err, content) {
     return;
   }
   // Authorize a client with the loaded credentials, then call the YouTube API.
-  authorize(JSON.parse(content), getChannel);
+  authorize(JSON.parse(content), songRequestOrchestrator);
 });
 
 /**
@@ -150,31 +161,64 @@ function createResource(properties) {
 }
 
 
-/**
- * Lists the names and IDs of up to 10 files.
- *
- * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
- */
-// function getChannel(auth) {
-//   var requestData = {'params': {'maxResults': '1',
-//   'part': 'snippet',
-//   'fields': 'items(id(videoId),snippet(title))',
-//   'q': 'surfing',
-//   'type': ''}};
-//   var service = google.youtube('v3');
-//   var parameters = removeEmptyParameters(requestData['params']);
-//   parameters['auth'] = auth;  
-//  // console.log(JSON.stringify(parameters, null, 4))
-//   service.search.list(parameters, function(err, response) {
-//     if (err) {
-//       console.log('The API returned an error: ' + err);
-//       return;
-//     }
-//     console.log(JSON.stringify(response.data.items, null, 4));
-//   });
-// }
 
-function getChannel(auth){
+function sleep() {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      resolve('resolved');
+    }, 1000);
+  });
+}
+
+async function songRequestOrchestrator(auth){
+
+  const songs = await getSongs();
+
+  for(let x = 0; x < songs.length; x++){
+      findSong(auth, songs[x].artist + " - " + songs[x].name);
+      await sleep();
+  }
+}
+
+function getSongs(){
+return new Promise((resolve, reject) => {
+  const songs = [];
+  var cursor = Song.find({ year: 2016 }).limit(3).cursor();
+  cursor.on('data', async function(song) {
+    console.log("sleeping")
+    await sleep();
+    console.log("not sleeping")
+    songs.push({artist: song.artist, name: song.name})
+    resolve(songs)
+  });
+})
+
+}
+
+function findSong(auth, q) {
+    var requestData = {'params': {'maxResults': '1',
+    'part': 'snippet',
+    'fields': 'items(id(videoId),snippet(title))',
+    'q': q,
+    'type': ''}};
+    var service = google.youtube('v3');
+    var parameters = removeEmptyParameters(requestData['params']);
+    parameters['auth'] = auth;  
+   // console.log(JSON.stringify(parameters, null, 4))
+    service.search.list(parameters, function(err, response) {
+      if (err) {
+        console.log('The API returned an error: ' + err);
+        return;
+      }
+      var responseString = JSON.stringify(response.data.items, null, 4)
+      const parsed = JSON.parse(responseString);
+      console.log("findsongs: " + parsed[0].snippet.title)
+      });
+    
+}
+
+function addSongToPlaylist(auth, {id, snippet}){
+  console.log("addSongs: " + snippet.title);
   var requestData = {'params': 
   {'part': 'snippet', 
   'onBehalfOfContentOwner': ''
@@ -182,7 +226,7 @@ function getChannel(auth){
   'properties': 
   {'snippet.playlistId': 'PLy8mnn_ZmevJTla_ergu5PXy5N3HNSmTB',
   'snippet.resourceId.kind': 'youtube#video',
-  'snippet.resourceId.videoId': 'M7FIvfx5J10',
+  'snippet.resourceId.videoId': id.videoId,
   'snippet.position': ''
 }}
   var service = google.youtube('v3');
@@ -194,6 +238,6 @@ function getChannel(auth){
       console.log('The API returned an error: ' + err);
       return;
     }
-    console.log(response);
+    console.log("added a video to the playlist: " + snippet.title);
   });
 }
