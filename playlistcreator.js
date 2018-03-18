@@ -10,22 +10,22 @@ mongoose.connect('mongodb://localhost/album');
 
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
-db.once('open', function() {
+db.once('open', function () {
   console.log("connected");
 });
 
 // If modifying these scopes, delete your previously saved credentials
 // at ~/.credentials/youtube-nodejs-quickstart.json
 //var SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
-var SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 
-'https://www.googleapis.com/auth/youtube', 
-'https://www.googleapis.com/auth/youtubepartner',
-'https://www.googleapis.com/auth/plus.login',
-'https://www.googleapis.com/auth/userinfo.email'];
+var SCOPES = ['https://www.googleapis.com/auth/youtube.upload',
+  'https://www.googleapis.com/auth/youtube',
+  'https://www.googleapis.com/auth/youtubepartner',
+  'https://www.googleapis.com/auth/plus.login',
+  'https://www.googleapis.com/auth/userinfo.email'];
 
 var TOKEN_DIR = (process.env.HOME || process.env.HOMEPATH ||
-    process.env.USERPROFILE) + '/.credentials/';
-    console.log(TOKEN_DIR);
+  process.env.USERPROFILE) + '/.credentials/';
+console.log(TOKEN_DIR);
 var TOKEN_PATH = TOKEN_DIR + 'youtube-nodejs-quickstart.json';
 
 // Load client secrets from a local file.
@@ -35,7 +35,7 @@ fs.readFile('client_secret.json', function processClientSecrets(err, content) {
     return;
   }
   // Authorize a client with the loaded credentials, then call the YouTube API.
-  authorize(JSON.parse(content), songRequestOrchestrator);
+  authorize(JSON.parse(content), orchestrateSongRequests);
 });
 
 /**
@@ -52,7 +52,7 @@ function authorize(credentials, callback) {
   var oauth2Client = new OAuth2(clientId, clientSecret, redirectUrl);
 
   // Check if we have previously stored a token.
-  fs.readFile(TOKEN_PATH, function(err, token) {
+  fs.readFile(TOKEN_PATH, function (err, token) {
     if (err) {
       getNewToken(oauth2Client, callback);
     } else {
@@ -80,9 +80,9 @@ function getNewToken(oauth2Client, callback) {
     input: process.stdin,
     output: process.stdout
   });
-  rl.question('Enter the code from that page here: ', function(code) {
+  rl.question('Enter the code from that page here: ', function (code) {
     rl.close();
-    oauth2Client.getToken(code, function(err, token) {
+    oauth2Client.getToken(code, function (err, token) {
       if (err) {
         console.log('Error while trying to retrieve access token', err);
         return;
@@ -170,74 +170,75 @@ function sleep() {
   });
 }
 
-async function songRequestOrchestrator(auth){
-
-  const songs = await getSongs();
-
-  for(let x = 0; x < songs.length; x++){
+async function orchestrateSongRequests(auth) {
+  const limit = 4;
+  for (let year = 1950; year < 2016; year += 5) {
+    const songs = await getSongs(year, limit);
+    for (let x = 0; x < songs.length; x++) {
       findSong(auth, songs[x].artist + " - " + songs[x].name);
       await sleep();
+    }
   }
 }
 
-function getSongs(){
-return new Promise((resolve, reject) => {
-  const songs = [];
-  var cursor = Song.find({ year: 2016 }).limit(3).cursor();
-  cursor.on('data', async function(song) {
-    console.log("sleeping")
-    await sleep();
-    console.log("not sleeping")
-    songs.push({artist: song.artist, name: song.name})
-    resolve(songs)
-  });
-})
+function getSongs(year, limit) {
+  return new Promise((resolve, reject) => {
+    const songs = [];
+    var cursor = Song.find({ year: year }).limit(limit).cursor();
+    cursor.on('data', async function (song) {
+      songs.push({ artist: song.artist, name: song.name })
+      resolve(songs)
+    });
+  })
 
 }
 
 function findSong(auth, q) {
-    var requestData = {'params': {'maxResults': '1',
-    'part': 'snippet',
-    'fields': 'items(id(videoId),snippet(title))',
-    'q': q,
-    'type': ''}};
-    var service = google.youtube('v3');
-    var parameters = removeEmptyParameters(requestData['params']);
-    parameters['auth'] = auth;  
-   // console.log(JSON.stringify(parameters, null, 4))
-    service.search.list(parameters, function(err, response) {
-      if (err) {
-        console.log('The API returned an error: ' + err);
-        return;
-      }
-      var responseString = JSON.stringify(response.data.items, null, 4)
-      const parsed = JSON.parse(responseString);
-      console.log("findsongs: " + parsed[0].snippet.title)
-      });
-    
-}
-
-function addSongToPlaylist(auth, {id, snippet}){
-  console.log("addSongs: " + snippet.title);
-  var requestData = {'params': 
-  {'part': 'snippet', 
-  'onBehalfOfContentOwner': ''
-  }, 
-  'properties': 
-  {'snippet.playlistId': 'PLy8mnn_ZmevJTla_ergu5PXy5N3HNSmTB',
-  'snippet.resourceId.kind': 'youtube#video',
-  'snippet.resourceId.videoId': id.videoId,
-  'snippet.position': ''
-}}
+  var requestData = {
+    'params': {
+      'maxResults': '1',
+      'part': 'snippet',
+      'fields': 'items(id(videoId),snippet(title))',
+      'q': q,
+      'type': ''
+    }
+  };
   var service = google.youtube('v3');
   var parameters = removeEmptyParameters(requestData['params']);
-  parameters['auth'] = auth;  
-  parameters['resource'] = createResource(requestData['properties']);
-  service.playlistItems.insert(parameters, function(err, response) {
+  parameters['auth'] = auth;
+  service.search.list(parameters, function (err, response) {
     if (err) {
       console.log('The API returned an error: ' + err);
       return;
     }
-    console.log("added a video to the playlist: " + snippet.title);
+    addSongToPlaylist(auth, response.data.items[0])
+  });
+}
+
+function addSongToPlaylist(auth, { id, snippet }) {
+  var requestData = {
+    'params':
+      {
+        'part': 'snippet',
+        'onBehalfOfContentOwner': ''
+      },
+    'properties':
+      {
+        'snippet.playlistId': 'PLy8mnn_ZmevJTla_ergu5PXy5N3HNSmTB',
+        'snippet.resourceId.kind': 'youtube#video',
+        'snippet.resourceId.videoId': id.videoId,
+        'snippet.position': ''
+      }
+  }
+  var service = google.youtube('v3');
+  var parameters = removeEmptyParameters(requestData['params']);
+  parameters['auth'] = auth;
+  parameters['resource'] = createResource(requestData['properties']);
+  service.playlistItems.insert(parameters, function (err, response) {
+    if (err) {
+      console.log('The API returned an error: ' + err);
+      return;
+    }
+    console.log("added: " + snippet.title);
   });
 }
